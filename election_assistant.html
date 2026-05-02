@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ElectIQ — RAG Election Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0d0d0d; --paper: #f5f0e8; --cream: #ede8da;
+  --accent: #c84b2f; --gold: #d4a847; --blue: #1a3a5c;
+  --muted: #7a7060; --border: #c8bfa8; --white: #faf8f3;
+  --chat-bg: #f0ebe0; --user-bubble: #1a3a5c; --green: #2d8a4e;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); min-height: 100vh; display: flex; flex-direction: column; }
+
+header {
+  background: var(--ink); color: var(--paper); padding: 0 1.5rem;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 60px; border-bottom: 3px solid var(--accent);
+  position: sticky; top: 0; z-index: 100;
+}
+.logo { display: flex; align-items: center; gap: 0.6rem; }
+.logo-icon { width: 34px; height: 34px; background: var(--accent); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+.logo-text { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 900; }
+.logo-text span { color: var(--gold); }
+.header-right { display: flex; align-items: center; gap: 0.8rem; }
+.rag-badge { font-family: 'DM Mono', monospace; font-size: 0.58rem; background: rgba(45,138,78,0.2); border: 1px solid rgba(45,138,78,0.4); color: #6fcf97; padding: 3px 8px; border-radius: 20px; letter-spacing: 1px; text-transform: uppercase; }
+.gemini-toggle-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #ccc; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.75rem; font-family: 'DM Sans', sans-serif; transition: all 0.2s; }
+.gemini-toggle-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.gemini-toggle-btn.active { background: rgba(66,133,244,0.2); border-color: rgba(66,133,244,0.5); color: #7ab4f5; }
+
+.app-layout { display: flex; flex: 1; height: calc(100vh - 60px); overflow: hidden; }
+
+.sidebar { width: 240px; background: var(--ink); color: var(--paper); display: flex; flex-direction: column; padding: 1.2rem 0.8rem; gap: 0.3rem; overflow-y: auto; border-right: 1px solid #222; flex-shrink: 0; }
+.sidebar-label { font-family: 'DM Mono', monospace; font-size: 0.58rem; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); padding: 0.6rem 0.5rem 0.3rem; margin-top: 0.3rem; }
+.topic-btn { background: transparent; border: 1px solid transparent; color: #bbb; padding: 0.55rem 0.7rem; border-radius: 7px; cursor: pointer; text-align: left; font-family: 'DM Sans', sans-serif; font-size: 0.8rem; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem; }
+.topic-btn:hover { background: rgba(255,255,255,0.07); color: #fff; border-color: rgba(255,255,255,0.1); }
+.topic-btn.active { background: rgba(200,75,47,0.2); border-color: rgba(200,75,47,0.4); color: var(--gold); }
+.topic-icon { font-size: 0.95rem; width: 18px; text-align: center; }
+.country-wrap { margin-top: auto; padding-top: 1rem; border-top: 1px solid #333; }
+.country-wrap label { font-family: 'DM Mono', monospace; font-size: 0.58rem; text-transform: uppercase; letter-spacing: 2px; color: var(--muted); display: block; margin-bottom: 0.4rem; }
+.country-select { width: 100%; background: #1a1a1a; border: 1px solid #333; color: #ccc; padding: 0.45rem; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 0.8rem; cursor: pointer; }
+
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--chat-bg); }
+
+.gemini-panel { background: #0d1117; border-bottom: 1px solid #2d4a7a; padding: 0.7rem 1.5rem; display: none; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.gemini-panel.open { display: flex; }
+.gemini-panel label { font-family: 'DM Mono', monospace; font-size: 0.65rem; color: #7ab4f5; letter-spacing: 1px; white-space: nowrap; }
+.gemini-input { flex: 1; min-width: 200px; background: #161b22; border: 1px solid #2d4a7a; color: #e6edf3; padding: 0.45rem 0.8rem; border-radius: 6px; font-family: 'DM Mono', monospace; font-size: 0.78rem; outline: none; }
+.gemini-input:focus { border-color: #4284f4; }
+.gemini-save-btn { background: #4284f4; border: none; color: white; padding: 0.45rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.78rem; font-family: 'DM Sans', sans-serif; font-weight: 600; transition: all 0.2s; white-space: nowrap; }
+.gemini-save-btn:hover { background: #3070d6; }
+.gemini-note { font-size: 0.68rem; color: #666; font-family: 'DM Mono', monospace; }
+.gemini-note a { color: #7ab4f5; }
+
+.chat-window { flex: 1; overflow-y: auto; padding: 1.5rem 1.5rem 1rem; display: flex; flex-direction: column; gap: 1rem; scroll-behavior: smooth; }
+.message { display: flex; gap: 0.7rem; max-width: 800px; animation: msgIn 0.3s ease both; }
+@keyframes msgIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.message.user { align-self: flex-end; flex-direction: row-reverse; }
+.message.bot { align-self: flex-start; }
+.avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; flex-shrink: 0; margin-top: 2px; }
+.message.bot .avatar { background: var(--accent); }
+.message.user .avatar { background: var(--blue); }
+.bubble { padding: 0.85rem 1rem; border-radius: 14px; max-width: 640px; line-height: 1.65; font-size: 0.88rem; }
+.message.bot .bubble { background: #fff; border: 1px solid var(--border); border-top-left-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.message.user .bubble { background: var(--user-bubble); color: white; border-top-right-radius: 4px; }
+.bubble h3 { font-family: 'Playfair Display', serif; font-size: 1.05rem; margin-bottom: 0.5rem; color: var(--blue); }
+.bubble p { margin-bottom: 0.45rem; }
+.bubble p:last-child { margin-bottom: 0; }
+.bubble ul { list-style: none; margin: 0.4rem 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.bubble ul li { display: flex; gap: 0.5rem; align-items: flex-start; font-size: 0.85rem; }
+.bubble ul li::before { content: '▸'; color: var(--accent); font-size: 0.72rem; margin-top: 4px; flex-shrink: 0; }
+.bubble ol { margin: 0.4rem 0 0.4rem 1.3rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.bubble ol li { font-size: 0.85rem; padding-left: 0.2rem; }
+
+.sources { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.7rem; padding-top: 0.6rem; border-top: 1px solid #eee; align-items: center; }
+.source-chip { background: #f0f4ff; border: 1px solid #c5d5f0; color: #2a4a80; font-family: 'DM Mono', monospace; font-size: 0.6rem; padding: 2px 8px; border-radius: 10px; }
+.source-chip.gem { background: #f0fff4; border-color: #a0d8b0; color: #1a6a35; }
+.rag-label { font-family: 'DM Mono', monospace; font-size: 0.6rem; color: var(--muted); }
+
+.quick-btns { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.7rem; }
+.quick-btn { background: var(--cream); border: 1.5px solid var(--border); color: var(--ink); padding: 0.4rem 0.8rem; border-radius: 18px; font-family: 'DM Sans', sans-serif; font-size: 0.76rem; cursor: pointer; transition: all 0.2s; font-weight: 500; }
+.quick-btn:hover { background: var(--accent); border-color: var(--accent); color: white; transform: translateY(-1px); }
+
+.typing { display: flex; gap: 0.4rem; padding: 0.6rem 0.8rem; align-items: center; }
+.typing span { width: 7px; height: 7px; background: var(--muted); border-radius: 50%; animation: bounce 1.2s infinite; }
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+
+.input-area { border-top: 1px solid var(--border); background: var(--white); padding: 0.9rem 1.5rem; display: flex; gap: 0.7rem; align-items: flex-end; }
+.input-wrap { flex: 1; background: var(--paper); border: 1.5px solid var(--border); border-radius: 11px; display: flex; align-items: center; transition: border-color 0.2s; padding: 0 0.4rem; }
+.input-wrap:focus-within { border-color: var(--blue); }
+#user-input { flex: 1; border: none; background: transparent; padding: 0.7rem; font-family: 'DM Sans', sans-serif; font-size: 0.86rem; color: var(--ink); outline: none; resize: none; max-height: 120px; }
+#user-input::placeholder { color: var(--muted); }
+.send-btn { width: 42px; height: 42px; background: var(--accent); border: none; border-radius: 9px; color: white; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
+.send-btn:hover { background: #a83a22; }
+
+.welcome-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 1.4rem; max-width: 620px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+.wc-title { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 900; margin-bottom: 0.2rem; }
+.wc-sub { color: var(--muted); font-size: 0.82rem; margin-bottom: 0.9rem; }
+.topic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.9rem; }
+.topic-card { background: var(--cream); border: 1.5px solid var(--border); border-radius: 9px; padding: 0.75rem; cursor: pointer; transition: all 0.2s; font-size: 0.8rem; }
+.topic-card:hover { border-color: var(--accent); background: #fdf6f4; transform: translateY(-2px); }
+.tc-icon { font-size: 1.2rem; margin-bottom: 0.25rem; }
+.tc-title { font-weight: 600; color: var(--blue); margin-bottom: 0.1rem; font-size: 0.82rem; }
+.tc-desc { color: var(--muted); font-size: 0.72rem; }
+.rag-info { background: #f0fff4; border: 1px solid #a0d8b0; border-radius: 8px; padding: 0.6rem 0.9rem; margin-top: 0.9rem; font-size: 0.75rem; color: #1a5c35; display: flex; align-items: center; gap: 0.5rem; }
+
+.chat-window::-webkit-scrollbar { width: 4px; }
+.chat-window::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.input-hint { text-align: center; font-size: 0.65rem; color: var(--muted); padding-top: 0.25rem; font-family: 'DM Mono', monospace; }
+
+@media (max-width: 640px) {
+  .sidebar { display: none; }
+  .topic-grid { grid-template-columns: 1fr; }
+  .chat-window { padding: 1rem; }
+  .input-area { padding: 0.7rem 1rem; }
+  .gemini-panel { padding: 0.6rem 1rem; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🗳️</div>
+    <div class="logo-text">Elect<span>IQ</span></div>
+  </div>
+  <div class="header-right">
+    <span class="rag-badge">⚡ RAG · No API Needed</span>
+    <button class="gemini-toggle-btn" id="gemini-toggle" onclick="toggleGeminiPanel()">✦ Gemini AI (optional)</button>
+  </div>
+</header>
+
+<div class="gemini-panel" id="gemini-panel">
+  <label>GEMINI API KEY</label>
+  <input type="password" class="gemini-input" id="gemini-key-input" placeholder="Paste free Gemini API key (optional)..." />
+  <button class="gemini-save-btn" onclick="saveGeminiKey()">✓ Enable</button>
+  <span class="gemini-note">Get free key → <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a> &nbsp;|&nbsp; App works perfectly without it ✓</span>
+</div>
+
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-label">Quick Topics</div>
+    <button class="topic-btn" onclick="ask('How does the election process work?')"><span class="topic-icon">🏛️</span> Election Process</button>
+    <button class="topic-btn" onclick="ask('How do I register to vote?')"><span class="topic-icon">📝</span> Voter Registration</button>
+    <button class="topic-btn" onclick="ask('Give me an election timeline')"><span class="topic-icon">📅</span> Election Timeline</button>
+    <button class="topic-btn" onclick="ask('How does vote counting work?')"><span class="topic-icon">🔢</span> Vote Counting</button>
+    <button class="topic-btn" onclick="ask('Give me a first-time voter checklist')"><span class="topic-icon">✅</span> Voter Checklist</button>
+    <button class="topic-btn" onclick="ask('Explain key election terms simply')"><span class="topic-icon">📚</span> Key Terms</button>
+    <button class="topic-btn" onclick="ask('I am a first-time voter, what should I know?')"><span class="topic-icon">🌱</span> First-Time Voter</button>
+    <button class="topic-btn" onclick="ask('How does election campaigning work?')"><span class="topic-icon">📣</span> Campaigning</button>
+    <button class="topic-btn" onclick="ask('How are election results declared?')"><span class="topic-icon">🏆</span> Election Results</button>
+    <button class="topic-btn" onclick="ask('What documents do I need to vote?')"><span class="topic-icon">🪪</span> Required Documents</button>
+    <div class="country-wrap">
+      <label>Country / Region</label>
+      <select class="country-select" id="country-select">
+        <option value="general">🌍 General</option>
+        <option value="india">🇮🇳 India</option>
+        <option value="usa">🇺🇸 United States</option>
+        <option value="uk">🇬🇧 United Kingdom</option>
+        <option value="australia">🇦🇺 Australia</option>
+        <option value="canada">🇨🇦 Canada</option>
+      </select>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="chat-window" id="chat-window">
+      <div class="message bot">
+        <div class="avatar">🗳️</div>
+        <div class="bubble">
+          <div class="welcome-card">
+            <div class="wc-title">Welcome to ElectIQ 👋</div>
+            <div class="wc-sub">Intelligent RAG-powered election guide — works without any API key</div>
+            <p>I use a <strong>built-in election knowledge base</strong> to answer your questions instantly using <strong>Retrieval-Augmented Generation (RAG)</strong>. No internet or API key needed for core answers.</p>
+            <div class="rag-info">⚡ <strong>RAG Mode Active:</strong> Your question → retrieves relevant knowledge → generates a structured answer. Optionally supercharge with free Gemini AI above.</div>
+            <div class="topic-grid">
+              <div class="topic-card" onclick="ask('How does the election process work?')"><div class="tc-icon">🏛️</div><div class="tc-title">Election Process</div><div class="tc-desc">Step-by-step overview</div></div>
+              <div class="topic-card" onclick="ask('Give me an election timeline')"><div class="tc-icon">📅</div><div class="tc-title">Timeline</div><div class="tc-desc">Key phases & dates</div></div>
+              <div class="topic-card" onclick="ask('How do I register to vote?')"><div class="tc-icon">📝</div><div class="tc-title">How to Register</div><div class="tc-desc">Registration guide</div></div>
+              <div class="topic-card" onclick="ask('I am a first-time voter, what should I know?')"><div class="tc-icon">🌱</div><div class="tc-title">First-Time Voter</div><div class="tc-desc">Everything you need</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div style="flex:1;display:flex;flex-direction:column;gap:0.25rem;">
+        <div class="input-wrap">
+          <textarea id="user-input" placeholder="Ask about elections, voting, registration, timelines..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        </div>
+        <div class="input-hint">Enter to send · Shift+Enter for new line</div>
+      </div>
+      <button class="send-btn" onclick="handleSend()">➤</button>
+    </div>
+  </main>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  ELECTION KNOWLEDGE BASE (RAG Documents)
+// ═══════════════════════════════════════════════════
+const KB = [
+  {
+    id: "overview", title: "What is an Election?",
+    keys: ["what is election","election meaning","define election","election overview","how elections work","election process","types of election","democracy","what is voting","general election"],
+    country: "general",
+    body: `An election is a formal process where citizens vote to choose representatives or decide important issues. Elections are the foundation of democracy.
+
+**Types of Elections:**
+- **General Election** — to choose the national government (Parliament, Congress, Lok Sabha)
+- **State/Local Election** — to choose state legislators, mayors, local leaders
+- **By-election** — held to fill a vacant seat mid-term
+- **Referendum** — citizens vote directly on a policy issue (e.g., Brexit)
+- **Primary Election** — a party chooses its candidate (USA)
+
+**The 5 Main Stages of Any Election:**
+1. **Announcement** — authorities declare the election date
+2. **Nomination** — candidates officially register to compete
+3. **Campaigning** — candidates promote their ideas to voters
+4. **Voting Day** — citizens cast their votes
+5. **Counting & Results** — votes tallied and winner declared`
+  },
+  {
+    id: "india", title: "Election Process in India",
+    keys: ["india election","indian election","lok sabha","rajya sabha","evm","election commission india","model code of conduct","mcc","general election india","how india votes","indian democracy","constituency india","state election india"],
+    country: "india",
+    body: `India runs the world's largest democratic elections, overseen by the **Election Commission of India (ECI)** — an independent constitutional body.
+
+**Stage 1 — Announcement & MCC**
+- ECI announces schedule; **Model Code of Conduct (MCC)** immediately comes into force
+- Government cannot announce new schemes or misuse state resources
+
+**Stage 2 — Nomination**
+- Candidates file nomination papers with a security deposit (₹25,000 for Lok Sabha)
+- Deposits forfeited if candidate gets less than 1/6th of votes polled
+
+**Stage 3 — Campaigning**
+- Rallies, door-to-door visits, media campaigns
+- Spending cap: ₹95 lakh per Lok Sabha candidate
+- **Silence period**: No campaigning 48 hours before voting
+
+**Stage 4 — Voting**
+- India uses **Electronic Voting Machines (EVMs)** with **VVPAT** paper trail
+- Voters show photo ID at their assigned polling booth
+- Voting often occurs in multiple phases across states
+
+**Stage 5 — Counting & Results**
+- EVMs opened; results tallied and cross-checked with VVPAT
+- First Past the Post system — highest votes wins
+- Party with majority forms the government; invited by President`
+  },
+  {
+    id: "usa", title: "Election Process in USA",
+    keys: ["usa election","american election","us election","presidential election","electoral college","congress","senate","house","primary","midterm","november","electoral votes","swing state"],
+    country: "usa",
+    body: `The United States has a multi-layered election system managed at state and federal levels.
+
+**Types of US Elections:**
+- Presidential (every 4 years), Midterm (every 2 years), Primaries, State & Local
+
+**Stage 1 — Primaries & Caucuses**
+- Parties hold primaries so members choose their candidate for the general election
+
+**Stage 2 — General Election Campaign**
+- November (first Tuesday after first Monday)
+- TV debates, rallies, ads, social media campaigns
+- Campaign finance regulated by FEC
+
+**Stage 3 — Voting**
+- In-person, early voting, or mail-in ballot
+- Voters must be registered (deadlines 15–30 days before, varies by state)
+
+**Stage 4 — Electoral College**
+- President chosen via 538 Electoral College electors
+- Most states: winner-take-all (all electoral votes go to popular vote winner)
+- 270 electoral votes needed to win
+
+**Stage 5 — Inauguration**
+- New President inaugurated January 20th`
+  },
+  {
+    id: "uk", title: "Election Process in UK",
+    keys: ["uk election","british election","parliament uk","first past post uk","constituency uk","prime minister election","house of commons","westminster","polling card uk"],
+    country: "uk",
+    body: `The UK uses a Westminster-style parliamentary democracy with First Past the Post (FPTP).
+
+**The System:**
+- 650 constituencies, each electing one MP
+- Candidate with most votes per constituency wins
+
+**Stage 1 — Dissolution**
+- PM calls election (or automatic every 5 years); ~6 week campaign period begins
+
+**Stage 2 — Nominations**
+- Candidates register with Returning Officer; pay £500 deposit (refunded if 5%+ votes)
+
+**Stage 3 — Polling Day** (usually Thursday)
+- Voters show ID at polling station (required since 2023)
+- Mark an X next to chosen candidate
+
+**Stage 4 — Results**
+- Results declared overnight by Returning Officers
+- Party with most seats forms government
+- No majority → **Hung Parliament** → coalition negotiations`
+  },
+  {
+    id: "registration", title: "How to Register to Vote",
+    keys: ["register to vote","voter registration","how to register","voter id","enroll","sign up","am i registered","voter roll","electoral roll","new voter","registration deadline"],
+    country: "general",
+    body: `Voter registration is the official process of signing up to vote. Without it, you cannot participate.
+
+**General Steps:**
+1. Check **eligibility** (citizen, minimum age, not legally disqualified)
+2. Find the **registration form** (online, post office, government office)
+3. Fill in details (name, address, date of birth, ID number)
+4. Submit before the **registration deadline**
+5. Receive your **voter ID card** or confirmation
+
+**By Country:**
+
+🇮🇳 **India:** voters.eci.gov.in → Fill Form 6 → Upload documents → Verify by BLO → Name added to electoral roll. Helpline: 1950
+
+🇺🇸 **USA:** vote.gov or your state website. Deadline: 15–30 days before election (varies). Some states allow same-day registration.
+
+🇬🇧 **UK:** gov.uk/register-to-vote. Deadline: 12 working days before election. Must be UK/Irish/Commonwealth citizen, 16+ (vote at 18).
+
+🇦🇺 **Australia:** aec.gov.au. Voting is **compulsory** for citizens 18+. Register 7 days before election.`
+  },
+  {
+    id: "india_registration", title: "Voter Registration in India (Detailed)",
+    keys: ["register india","india voter id","epic card","form 6","voters eci","nvsp","voter helpline","voter list india","add name voter list","aadhaar voter","voter id card india","blo","booth level officer","electoral roll india"],
+    country: "india",
+    body: `Voter registration in India is managed by the **Election Commission of India (ECI)**.
+
+**Eligibility:**
+- Indian citizen, 18+ as of January 1 of the reference year
+- Ordinarily resident in the constituency
+
+**Online Registration:**
+1. Visit **voters.eci.gov.in** or download **Voter Helpline App**
+2. Click "New Registration" → Fill **Form 6**
+3. Enter name, address, DOB, mobile, email
+4. Upload passport photo + address proof
+5. Note your Application Reference Number
+6. BLO (Booth Level Officer) verifies your details
+7. Name appears in Electoral Roll once approved
+
+**Offline Registration:**
+1. Visit your local Electoral Registration Officer (ERO)
+2. Collect and fill Form 6
+3. Attach photo, age proof, address proof → Submit
+
+**Documents Needed:**
+- Age Proof: Birth certificate, Class 10 marksheet, Aadhaar
+- Address Proof: Aadhaar, passport, utility bill, bank passbook
+- Passport-size photograph
+
+**Useful Info:** Website: voters.eci.gov.in | Helpline: 1950 | App: Voter Helpline`
+  },
+  {
+    id: "voting_day", title: "What to Do on Voting Day",
+    keys: ["voting day","how to vote","polling booth","cast vote","what to bring","election day","go to vote","how to cast vote","where to vote","polling station","indelible ink","evm button","nota"],
+    country: "general",
+    body: `Voting day is when you make your voice heard! Here's your complete guide:
+
+**Before You Go:**
+- ✅ Confirm your **polling booth location** (check voter ID or election website)
+- ✅ Check the **voting date and time** (usually 7am–6pm)
+- ✅ Carry your **voter ID** and backup ID
+- ✅ Know the candidates on your ballot
+
+**At the Polling Station:**
+1. Join the queue at your assigned booth
+2. Show **photo ID** to the polling officer
+3. Your name is found in the **electoral roll** and marked
+4. Directed to the **EVM** (India) or given a **ballot paper**
+5. Cast your vote **privately** in the voting booth
+6. In India: Press the button next to your chosen candidate on the EVM
+7. Finger marked with **indelible ink** to prevent double voting
+8. Collect **VVPAT slip** confirmation (India)
+
+**Your Rights:**
+- Your vote is completely **secret** — no one can watch or pressure you
+- You can use **NOTA** (None of the Above) in India if you reject all candidates
+- If your name is missing, contact the **Presiding Officer**`
+  },
+  {
+    id: "timeline", title: "Election Timeline & Phases",
+    keys: ["election timeline","election schedule","election phases","election calendar","when is election","election dates","deadline","notification","important dates","mcc period","silence period","phases of election"],
+    country: "general",
+    body: `Elections follow a structured timeline. Here's a typical general election timeline:
+
+**6–12 Months Before:**
+- Voter registration drives; electoral rolls updated
+- Constituency boundaries finalized
+
+**4–8 Weeks Before — Announcement:**
+- Election date officially announced
+- Model Code of Conduct comes into force
+- Nomination process begins
+
+**3–5 Weeks Before — Nominations:**
+- Candidates file nomination papers
+- Scrutiny and withdrawal deadline
+
+**2–4 Weeks Before — Campaigning:**
+- Active rallies, ads, debates
+- **Silence period** starts 48 hours before polling
+
+**Polling Day:**
+- Voting (may be multiple phases for large countries like India)
+- Exit polls released after polls close
+
+**1–3 Days After — Counting:**
+- Votes counted under strict supervision
+- Results declared constituency by constituency
+
+**Within Days/Weeks — Government Formation:**
+- Winning party/coalition forms government
+- Leaders take oath of office
+
+🇮🇳 **India Lok Sabha:** ~6 weeks announcement to results, typically 7 voting phases across states.`
+  },
+  {
+    id: "counting", title: "How Vote Counting Works",
+    keys: ["vote counting","count votes","how are votes counted","evm counting","ballot counting","result counting","recount","tally","electronic voting","paper ballot","how winner decided","first past post","proportional","vvpat"],
+    country: "general",
+    body: `Vote counting determines the winner. Here's how different systems work:
+
+**Methods of Counting:**
+
+**1. Electronic Voting Machines (EVMs) — India**
+- Votes stored electronically; EVMs opened on counting day
+- Results tallied round by round
+- Cross-checked with VVPAT paper slips (random sample verification)
+- Fast — results known within hours
+
+**2. Paper Ballots** (UK, Canada, parts of USA)
+- Voters mark paper; counted by hand or optical scanner
+- Slower but provides physical paper trail
+
+**3. Optical Scan** (USA)
+- Voters mark paper; machine scans automatically
+- Paper ballots kept as recount backup
+
+**India Counting Process:**
+1. Counting at designated Counting Centre under observer supervision
+2. Postal ballots counted first
+3. EVM results tallied round by round per table
+4. Running totals displayed publicly
+5. Returning Officer formally declares winner
+
+**Determining the Winner:**
+- **First Past the Post** — highest votes wins (no majority needed) — India, UK, USA
+- **Proportional Representation** — seats by % of votes — many European countries
+- **Two-Round System** — runoff if no one gets 50%+
+
+**Recount:** If margin is very small, losing candidate can request a recount.`
+  },
+  {
+    id: "terms", title: "Key Election Terms Explained Simply",
+    keys: ["election terms","political terms","constituency","ballot","mandate","vocabulary","glossary","first past post","proportional representation","hung parliament","coalition","by election","electorate","incumbent","turnout","nota","exit poll","electoral roll"],
+    country: "general",
+    body: `Here are the most important election terms in plain language:
+
+**Constituency / District** — The geographic area that elects one representative. India has 543 Lok Sabha constituencies.
+
+**Ballot** — The official form (paper or electronic) on which you record your vote.
+
+**Candidate** — A person competing to win an elected position.
+
+**Electorate** — All citizens who are registered and eligible to vote.
+
+**Mandate** — When a party wins, they have a "mandate" — the public's permission to implement their policies.
+
+**First Past the Post (FPTP)** — Candidate with most votes wins, even without 50%+. Used in India, UK, USA.
+
+**Proportional Representation (PR)** — Seats divided by percentage of votes each party receives.
+
+**Coalition Government** — When no single party wins majority, two or more parties join to govern together.
+
+**Hung Parliament / Assembly** — When no party wins enough seats for a majority alone.
+
+**By-Election** — Election in one constituency to fill a vacancy (death/resignation of MP/MLA).
+
+**NOTA (None of the Above)** — Option on Indian ballots to reject all candidates.
+
+**Exit Poll** — Survey of voters just after voting, used to predict results before official counting.
+
+**Turnout** — Percentage of registered voters who actually voted. High turnout = healthy democracy.
+
+**Incumbent** — The current office holder who is running for re-election.
+
+**Electoral Roll** — The official list of all registered voters in a constituency.
+
+**Indelible Ink** — Ink applied to finger after voting in India to prevent double voting.`
+  },
+  {
+    id: "firstvoter", title: "First-Time Voter Complete Guide",
+    keys: ["first time voter","new voter","first vote","young voter","18 year old","beginner voter","first election","never voted","guide new voter","what do i need to vote","how do i start voting","steps to vote","first time"],
+    country: "general",
+    body: `Welcome! Voting for the first time is a milestone. Here's everything you need:
+
+**Step 1 — Check Your Eligibility**
+- Are you a citizen? ✓
+- Are you 18 years or older? ✓
+- Are you not legally barred from voting? ✓
+
+**Step 2 — Register to Vote (Do this early!)**
+- 🇮🇳 India: voters.eci.gov.in → Form 6
+- 🇺🇸 USA: vote.gov or your state website
+- 🇬🇧 UK: gov.uk/register-to-vote
+- Register weeks before the deadline — don't wait!
+
+**Step 3 — Find Your Polling Booth**
+- Your voter ID or registration shows your assigned booth
+- You MUST vote at your assigned booth
+
+**Step 4 — Know What to Bring**
+- Voter ID card (primary document)
+- Backup: Aadhaar, passport, driving licence
+- Your polling slip (if received)
+
+**Step 5 — On Voting Day**
+- Arrive during voting hours (usually 7am–6pm)
+- Show your ID to the polling officer
+- Cast your vote privately on EVM or ballot paper
+- In India: finger will be marked with indelible ink
+
+**Remember:**
+- 🔒 Your vote is completely **secret** — no one can see who you voted for
+- ✊ No one can force you to vote any particular way
+- 📵 No phones/cameras inside the voting booth
+- 🗳️ In India, use **NOTA** if you reject all candidates
+- 💪 Every vote counts — elections have been won by just a few hundred votes!`
+  },
+  {
+    id: "campaigning", title: "How Election Campaigning Works",
+    keys: ["campaigning","campaign","election campaign","political rally","political advertisement","campaign spending","campaign rules","model code of conduct","campaign finance","party manifesto","political party","campaign period","paid news","bribery voting"],
+    country: "general",
+    body: `Campaigning is how candidates and parties try to win votes.
+
+**What is Campaigning?**
+The period between election announcement and voting day during which candidates promote their ideas and ask for support.
+
+**Methods of Campaigning:**
+- **Public Rallies** — large speeches by party leaders
+- **Door-to-Door** — candidates/volunteers visit homes personally
+- **TV & Radio Ads** — paid political advertisements
+- **Social Media** — Facebook, Instagram, X (Twitter) campaigns
+- **Manifestos** — official documents listing party promises
+- **Debates** — candidates debate each other publicly
+
+**Rules & Restrictions:**
+
+🇮🇳 **India (Model Code of Conduct):**
+- Government can't announce new schemes after MCC is active
+- Spending limit: ₹95 lakh per Lok Sabha candidate
+- No campaigning during **silence period** (48 hours before polling)
+- No use of religion/caste to solicit votes
+- Paid news prohibited; expenses must be declared
+
+🇺🇸 **USA:** FEC regulates campaign finance; Super PACs allowed; "I approve this message" disclosures required.
+
+🇬🇧 **UK:** Strict constituency spending limits; no political TV/radio ads allowed.
+
+**Absolutely Not Allowed Anywhere:**
+- Bribing voters (cash, gifts, liquor)
+- Threatening or intimidating voters
+- Defacing public property with unauthorized posters`
+  },
+  {
+    id: "results", title: "How Election Results Are Declared",
+    keys: ["election results","how results declared","winner declared","government formation","majority","coalition","hung parliament","oath ceremony","result day","counting day","exit poll vs result","who won","form government","pm oath","president oath"],
+    country: "general",
+    body: `After counting, results are declared and a new government is formed.
+
+**Step 1 — Counting Day**
+- Votes counted at designated counting centres
+- Results declared constituency by constituency as counting completes
+- Live updates on TV and election commission websites
+
+**Step 2 — Declaring a Winner**
+- Candidate with most votes wins (First Past the Post)
+- **Returning Officer** formally declares the winner and issues certificate
+
+**Step 3 — Overall Majority Check**
+- India: needs 272 of 543 seats | UK: needs 326 of 650 seats | USA: needs 270 electoral votes
+
+**Step 4 — Government Formation**
+
+✅ **Clear majority:**
+- Party leader invited to form government and takes oath as PM/President
+
+❓ **Hung Parliament / No majority:**
+- Largest party attempts to form a **coalition** with other parties
+- Negotiations can take days or weeks
+- President/Monarch invites coalition leader to form government
+
+**Step 5 — Oath Taking**
+- New PM/President takes oath of office
+- Cabinet ministers appointed and sworn in
+
+**Key Terms:**
+- **Simple Majority** — more than half of total seats
+- **Coalition** — alliance of parties to reach majority
+- **Opposition** — parties that lost, who scrutinize the government
+- **Exit Poll vs Result** — exit polls are predictions; official results may differ significantly`
+  },
+  {
+    id: "documents", title: "Documents Required to Vote",
+    keys: ["documents","id proof","voter id","what to carry","what to bring","identity proof","photo id","aadhaar","passport vote","valid id voting","documents needed","id at polling","12 documents","epic card","voter slip"],
+    country: "general",
+    body: `You must prove your identity before voting. Here's what's accepted:
+
+🇮🇳 **India — 12 Accepted Documents (any one):**
+1. **Voter ID Card (EPIC)** — primary ID
+2. Aadhaar Card
+3. Passport
+4. Driving Licence
+5. PAN Card
+6. MNREGA Job Card
+7. Bank/Post Office Passbook with photograph
+8. Smart Card (issued by RGI)
+9. Pension document with photograph
+10. NPR Smart Card
+11. Health Insurance Smart Card (ESIC)
+12. Service Identity Cards (Government/PSU employees)
+
+🇺🇸 **USA (varies by state):**
+- Most states: Driver's licence, state ID, passport
+- Some require photo ID; others use signature verification
+- Some states: no ID requirement
+
+🇬🇧 **UK (since 2023):**
+- Passport, driving licence, Oyster 60+ card, Blue Badge
+- No photo ID? Apply for a free **Voter Authority Certificate** at gov.uk
+
+🇦🇺 **Australia:**
+- Your name on the electoral roll is usually sufficient
+- No photo ID typically required
+
+**Tip:** Always carry your voter ID as the primary document and bring a backup just in case!`
+  }
+];
+
+// ═══════════════════════════════════════════════════
+//  RAG RETRIEVAL ENGINE
+// ═══════════════════════════════════════════════════
+function tokenize(text) {
+  return text.toLowerCase().replace(/[^\w\s]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+}
+
+function scoreDoc(query, doc) {
+  const q = query.toLowerCase();
+  const qToks = tokenize(query);
+  let score = 0;
+
+  // Keyword match (highest weight)
+  for (const kw of doc.keys) {
+    if (q.includes(kw)) score += 8;
+    else if (kw.split(' ').some(k => q.includes(k))) score += 2;
+  }
+
+  // Title token match
+  const titleToks = tokenize(doc.title);
+  for (const t of qToks) {
+    if (titleToks.includes(t)) score += 4;
+  }
+
+  // Body token overlap
+  const bodyToks = new Set(tokenize(doc.body.slice(0, 400)));
+  for (const t of qToks) {
+    if (bodyToks.has(t)) score += 1;
+    else for (const b of bodyToks) { if (b.includes(t) || t.includes(b)) { score += 0.3; break; } }
+  }
+
+  return score;
+}
+
+function retrieve(query, topK = 2) {
+  const country = document.getElementById('country-select').value;
+  const scored = KB.map(doc => {
+    let s = scoreDoc(query, doc);
+    if (doc.country === country) s += 5;
+    if (doc.country === 'general') s += 1;
+    return { doc, s };
+  });
+  scored.sort((a, b) => b.s - a.s);
+  return scored.slice(0, topK).filter(x => x.s > 1).map(x => x.doc);
+}
+
+// ═══════════════════════════════════════════════════
+//  RAG ANSWER GENERATOR
+// ═══════════════════════════════════════════════════
+const FOLLOW_UPS = {
+  overview:         ["How do I register to vote?", "Give me an election timeline", "How does vote counting work?"],
+  india:            ["How do I register to vote in India?", "What documents do I need to vote?", "What is EVM and VVPAT?"],
+  usa:              ["How do I register to vote in USA?", "What is the Electoral College?", "How do primaries work?"],
+  uk:               ["How do I register to vote in UK?", "What ID do I need at UK polling station?", "What is a hung parliament?"],
+  registration:     ["What documents are needed?", "What is the registration deadline?", "How to check if I am registered?"],
+  india_registration:["What documents are needed to vote in India?", "How to check my name on voter list?", "What is Form 6?"],
+  voting_day:       ["What ID should I bring?", "What is NOTA?", "How does vote counting work?"],
+  timeline:         ["When should I register to vote?", "What is the silence period?", "How long does counting take?"],
+  counting:         ["How is the winner declared?", "What is VVPAT?", "What happens in a tied election?"],
+  terms:            ["How does FPTP work?", "What is a coalition government?", "What is voter turnout?"],
+  firstvoter:       ["How do I register to vote?", "What do I bring on voting day?", "How do I find my polling booth?"],
+  campaigning:      ["What is the Model Code of Conduct?", "What are campaign spending limits?", "What is a party manifesto?"],
+  results:          ["How is a government formed?", "What is a coalition?", "What happens in a hung parliament?"],
+  documents:        ["How do I get a voter ID card?", "What if I lost my voter ID?", "How to register to vote?"]
+};
+
+function buildAnswer(query, docs) {
+  if (!docs.length) {
+    return {
+      text: `I don't have specific info on that in my knowledge base yet. Try rephrasing, or enable **Gemini AI** (top-right button) for broader answers.\n\nI can help with:\n- How elections work (any country)\n- Voter registration steps\n- Election timelines\n- Vote counting process\n- Key election terms\n- First-time voter guide\n\n[SUGGESTIONS: How does the election process work? | How do I register to vote? | Give me an election timeline]`,
+      sources: []
+    };
+  }
+
+  const primary = docs[0];
+  let text = primary.body;
+
+  // Add snippet from secondary doc if it's different enough
+  if (docs[1] && docs[1].id !== primary.id) {
+    const snippet = docs[1].body.split('\n\n').slice(0, 2).join('\n\n');
+    text += `\n\n**Also see — ${docs[1].title}:**\n${snippet}`;
+  }
+
+  const fu = FOLLOW_UPS[primary.id] || ["How does voting work?", "How do I register?", "Give me an election timeline"];
+  text += `\n\n[SUGGESTIONS: ${fu.join(' | ')}]`;
+
+  return { text, sources: docs.map(d => d.title) };
+}
+
+// ═══════════════════════════════════════════════════
+//  GEMINI API (Optional Enhancement)
+// ═══════════════════════════════════════════════════
+let geminiKey = '';
+let geminiOn = false;
+
+try { geminiKey = localStorage.getItem('electiq_gemini') || ''; } catch(e) {}
+
+function toggleGeminiPanel() {
+  const panel = document.getElementById('gemini-panel');
+  panel.classList.toggle('open');
+  if (geminiKey) document.getElementById('gemini-key-input').value = geminiKey;
+}
+
+function saveGeminiKey() {
+  const k = document.getElementById('gemini-key-input').value.trim();
+  if (!k) return;
+  geminiKey = k;
+  geminiOn = true;
+  try { localStorage.setItem('electiq_gemini', k); } catch(e) {}
+  document.getElementById('gemini-toggle').classList.add('active');
+  document.getElementById('gemini-toggle').textContent = '✦ Gemini AI (ON)';
+  document.getElementById('gemini-panel').classList.remove('open');
+  addBotMsg('✅ **Gemini AI enabled!** I will now use Gemini to enhance answers using your retrieved knowledge context. Core RAG answers remain instant and free.', [], false);
+}
+
+async function callGemini(query, context) {
+  if (!geminiKey) return null;
+  const country = document.getElementById('country-select').value;
+  const ctxStr = country !== 'general' ? `Context: User is asking about elections in ${country}.\n\n` : '';
+  const prompt = `${ctxStr}You are ElectIQ, a neutral, friendly election guide assistant.
+
+Use this retrieved knowledge:
+---
+${context}
+---
+
+Answer the user's question clearly and in a structured way. Use **bold** for key terms. Use numbered lists for steps. Use ▸ for bullet points. Stay neutral — no political opinions.
+
+End your response with: [SUGGESTIONS: question1 | question2 | question3]
+
+User question: ${query}`;
+
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 900, temperature: 0.5 }
+      })
+    });
+    const d = await r.json();
+    if (d.error) { console.warn('Gemini error:', d.error.message); return null; }
+    return d.candidates?.[0]?.content?.parts?.[0]?.text || null;
+  } catch(e) { return null; }
+}
+
+// ═══════════════════════════════════════════════════
+//  RENDERING
+// ═══════════════════════════════════════════════════
+function parseText(text) {
+  let suggestions = [];
+  const m = text.match(/\[SUGGESTIONS:\s*(.+?)\]/);
+  if (m) {
+    suggestions = m[1].split('|').map(s => s.trim());
+    text = text.replace(/\[SUGGESTIONS:.*?\]/, '').trim();
+  }
+
+  let html = text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^#{1,3} (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^▸ (.+)$/gm, '<li>$1</li>')
+    .replace(/^[•\-] (.+)$/gm, '<li>$1</li>')
+    .replace(/^(\d+)\. (.+)$/gm, '<OLITEM>$1. $2</OLITEM>')
+    .split('\n\n')
+    .map(blk => {
+      blk = blk.trim();
+      if (!blk) return '';
+      if (blk.includes('<OLITEM>')) return `<ol>${blk.replace(/<OLITEM>/g,'<li>').replace(/<\/OLITEM>/g,'</li>')}</ol>`;
+      if (blk.includes('<li>')) return `<ul>${blk}</ul>`;
+      if (blk.startsWith('<h3>')) return blk;
+      return `<p>${blk.replace(/\n/g,'<br>')}</p>`;
+    }).join('');
+
+  if (suggestions.length) {
+    html += `<div class="quick-btns">${suggestions.map(s =>
+      `<button class="quick-btn" onclick="ask('${s.replace(/'/g,"\\'")}')">💬 ${s}</button>`
+    ).join('')}</div>`;
+  }
+  return html;
+}
+
+function addBotMsg(text, sources = [], isGemini = false) {
+  const win = document.getElementById('chat-window');
+  const wrap = document.createElement('div');
+  wrap.className = 'message bot';
+  const av = document.createElement('div');
+  av.className = 'avatar'; av.textContent = '🗳️';
+  const bub = document.createElement('div');
+  bub.className = 'bubble';
+  bub.innerHTML = parseText(text);
+  if (sources.length) {
+    const src = document.createElement('div');
+    src.className = 'sources';
+    src.innerHTML = `<span class="rag-label">📚 Retrieved:</span>` +
+      sources.map(s => `<span class="source-chip${isGemini?' gem':''}">${isGemini?'✦ ':''}${s}</span>`).join('');
+    bub.appendChild(src);
+  }
+  wrap.appendChild(av); wrap.appendChild(bub);
+  win.appendChild(wrap);
+  win.scrollTop = win.scrollHeight;
+}
+
+function addUserMsg(text) {
+  const win = document.getElementById('chat-window');
+  const wrap = document.createElement('div');
+  wrap.className = 'message user';
+  const av = document.createElement('div');
+  av.className = 'avatar'; av.textContent = '👤';
+  const bub = document.createElement('div');
+  bub.className = 'bubble'; bub.textContent = text;
+  wrap.appendChild(av); wrap.appendChild(bub);
+  win.appendChild(wrap);
+  win.scrollTop = win.scrollHeight;
+}
+
+function showTyping() {
+  const win = document.getElementById('chat-window');
+  const wrap = document.createElement('div');
+  wrap.className = 'message bot'; wrap.id = 'typing-ind';
+  const av = document.createElement('div');
+  av.className = 'avatar'; av.textContent = '🗳️';
+  const bub = document.createElement('div');
+  bub.className = 'bubble';
+  bub.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  wrap.appendChild(av); wrap.appendChild(bub);
+  win.appendChild(wrap);
+  win.scrollTop = win.scrollHeight;
+}
+
+function hideTyping() {
+  const t = document.getElementById('typing-ind');
+  if (t) t.remove();
+}
+
+// ═══════════════════════════════════════════════════
+//  MAIN QUERY HANDLER
+// ═══════════════════════════════════════════════════
+async function processQuery(query) {
+  showTyping();
+  await new Promise(r => setTimeout(r, 350));
+
+  // Retrieve docs
+  const docs = retrieve(query);
+
+  // If Gemini enabled, use RAG context + Gemini
+  if (geminiOn && geminiKey && docs.length) {
+    const ctx = docs.map(d => `${d.title}:\n${d.body}`).join('\n\n---\n\n');
+    const gemAns = await callGemini(query, ctx);
+    hideTyping();
+    if (gemAns) {
+      addBotMsg(gemAns, docs.map(d => d.title), true);
+      return;
+    }
+  }
+
+  // Pure RAG answer (no API)
+  hideTyping();
+  const { text, sources } = buildAnswer(query, docs);
+  addBotMsg(text, sources, false);
+}
+
+async function handleSend() {
+  const inp = document.getElementById('user-input');
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = ''; autoResize(inp);
+  document.querySelectorAll('.topic-btn').forEach(b => b.classList.remove('active'));
+  addUserMsg(text);
+  await processQuery(text);
+}
+
+function ask(q) {
+  document.getElementById('user-input').value = q;
+  handleSend();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// Restore Gemini key
+if (geminiKey) {
+  geminiOn = true;
+  document.getElementById('gemini-toggle').classList.add('active');
+  document.getElementById('gemini-toggle').textContent = '✦ Gemini AI (ON)';
+}
+
+document.querySelectorAll('.topic-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.topic-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
